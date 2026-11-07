@@ -6,7 +6,7 @@ CRM для строительных объектов и задач. Постан
 
 ## Локальный запуск
 
-Нужен Node.js 24.22 или новее. Версии пакетов зафиксированы в lockfile.
+Нужна ветка Node.js 24; локально проверки выполнены на 24.22.1. Версии пакетов зафиксированы в lockfile.
 
 1. Установите зависимости: `npm ci --ignore-scripts`.
 2. Скопируйте `.env.example` в `.env.local`, заполните URL Supabase и publishable key своего проекта.
@@ -46,7 +46,7 @@ npm run test:integration
 
 React + TypeScript, Vite, Ant Design, React Router, Supabase Auth/PostgreSQL. Отдельный прикладной сервер и ORM не требуются. Правила записи выполняются внутри транзакционных функций базы, чтение защищено RLS.
 
-Сборка находится в dist. vercel.json задаёт Vite, установку npm ci --ignore-scripts и возврат index.html для клиентских маршрутов. В Vercel передаются только две публичные переменные VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY; серверный ключ там не требуется. Внешнее демо готовится к размещению.
+Сборка находится в dist. vercel.json задаёт Vite, установку npm ci --ignore-scripts и возврат index.html для клиентских маршрутов. В Vercel передаются только две публичные переменные VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY; серверный ключ там не требуется. Production-демо: [2crm.vercel.app](https://2crm.vercel.app). Проверены входы обеих ролей, собственные и чужие задачи, прямая ссылка с обновлением страницы и сохранение формы. Доступы выдаются отдельно.
 
 ## Известные ограничения
 
