@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Alert, Button, Card, Divider, Form, Input, Space, Spin, Typography } from 'antd';
+import { Alert, Button, Card, Divider, Form, Input, Modal, Space, Spin, Typography } from 'antd';
 import { Navigate, useLocation } from 'react-router';
 import { supabase, unwrap, errorText, type Profile } from '../../shared/api/client';
 import { getDemoAccounts } from './demo-accounts';
+import { resetDemoData } from './reset-demo';
 import { publicDemo } from './public-demo';
 const demoAccounts = getDemoAccounts(import.meta.env, publicDemo);
 type AuthState = { session: Session | null; profile: Profile | null; loading: boolean; error: string | null; reload: () => void; signOut: () => Promise<void> };
@@ -51,8 +52,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 export function LoginPage() {
  const auth = useAuth(); const location = useLocation(); const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false); const busy = useRef(false); const [activeDemo, setActiveDemo] = useState<string | null>(null);
+ const [resetOpen, setResetOpen] = useState(false);
+ const [resetError, setResetError] = useState<string | null>(null);
+ const [resetDone, setResetDone] = useState(false);
+ const resetDemo = async () => {
+  const credentials = demoAccounts.find(account => account.id === 'anna');
+  if (busy.current || !credentials) return;
+  busy.current = true; setPending(true); setActiveDemo('reset'); setResetError(null); setResetDone(false);
+  try { await resetDemoData(credentials); setResetOpen(false); setResetDone(true); }
+  catch (failure) { setResetError((failure as { code?: string })?.code === 'PT409' ? 'Сброс уже выполняется. Подождите и повторите попытку.' : errorText(failure)); }
+  finally { busy.current = false; setPending(false); setActiveDemo(null); }
+ };
  const signIn = async (values: { email: string; password: string }, demoId: string | null = null) => {
-  if (busy.current) return; busy.current = true; setPending(true); setActiveDemo(demoId); setError(null);
+  if (busy.current) return; busy.current = true; setPending(true); setActiveDemo(demoId); setError(null); setResetDone(false);
   try { const result = await supabase.auth.signInWithPassword({ email: values.email.trim(), password: values.password }); if (result.error) throw result.error; } catch (failure) { setError(errorText(failure)); } finally { busy.current = false; setPending(false); setActiveDemo(null); }
  };
  const from = (location.state as { from?: string } | null)?.from;
@@ -60,10 +72,16 @@ export function LoginPage() {
  if (auth.profile) return <Navigate replace to={from?.startsWith('/') && !from.startsWith('//') && from !== '/login' ? from : auth.profile.role === 'manager' ? '/objects' : '/my-tasks'} />;
  return <main className="login"><Card className="login-card"><Typography.Title level={2}>Вход в 2CRM</Typography.Title><Typography.Paragraph type="secondary">{demoAccounts.length ? 'Выберите участника для входа в демо' : 'Учётную запись выдаёт руководитель'}</Typography.Paragraph>
  {sessionStorage.getItem('2crm-had-session') && <Alert className="notice" type="info" title="Сессия завершилась. Войдите снова, чтобы продолжить" />}
+ {resetDone && <Alert className="notice" type="success" title="Демо-данные восстановлены: 3 объекта, 6 задач" />}
  {(error || auth.error) && <Alert className="notice" type="error" title={error || auth.error} />}
  {demoAccounts.length > 0 && <><div className="demo-logins">{demoAccounts.map(account => <Button key={account.id} block disabled={pending} loading={pending && activeDemo === account.id} onClick={() => void signIn(account, account.id)}>{account.label}</Button>)}</div><Divider>Вход по почте</Divider></>}
  <Form layout="vertical" requiredMark={false} onFinish={values => signIn(values)}>
  <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Введите email' }, { type: 'email', message: 'Проверьте адрес email' }]}><Input autoComplete="username" type="email" disabled={pending} /></Form.Item>
  <Form.Item label="Пароль" name="password" rules={[{ required: true, message: 'Введите пароль' }]}><Input.Password autoComplete="current-password" disabled={pending} /></Form.Item>
- <Button type="primary" htmlType="submit" loading={pending && !activeDemo} disabled={pending} block>Войти</Button></Form></Card></main>;
+ <Button type="primary" htmlType="submit" loading={pending && !activeDemo} disabled={pending} block>Войти</Button></Form>
+ {demoAccounts.length > 0 && <Button className="demo-reset" type="link" block disabled={pending} onClick={() => { setResetError(null); setResetOpen(true); }}>Сбросить демо-данные</Button>}
+ <Modal title="Вернуть исходные демо-данные?" open={resetOpen} onCancel={() => { if (!busy.current) setResetOpen(false); }} onOk={() => void resetDemo()} okText="Сбросить данные" cancelText="Отмена" confirmLoading={pending && activeDemo === 'reset'} okButtonProps={{ danger: true }} cancelButtonProps={{ disabled: pending }} closable={!pending} mask={{ closable: !pending }} keyboard={!pending}>
+  <Typography.Paragraph>Текущие изменения всех участников исчезнут из рабочих списков. Будут восстановлены 3 объекта и 6 задач.</Typography.Paragraph>
+  {resetError && <Alert type="error" title={resetError} />}
+ </Modal></Card></main>;
 }

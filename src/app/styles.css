@@ -124,3 +124,4 @@ a, p, h1, h2, h3, td, .plain-text { overflow-wrap: anywhere; }
 @media (max-width: 991px) { .sidebar { display: none; } }
 
 .demo-logins { display: flex; flex-direction: column; gap: 8px; }
+.demo-reset { margin-top: 12px; }

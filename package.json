@@ -15,7 +15,8 @@
     "test": "node --test --test-isolation=none tests/unit/request.test.mjs tests/unit/task-presentation.test.mjs tests/unit/versioned-save.test.mjs tests/unit/demo-accounts.test.mjs",
     "test:integration": "node --test --test-isolation=none tests/integration/crm.test.mjs",
     "provision": "node scripts/provision.mjs",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "test:demo-reset": "node --test --test-isolation=none tests/integration/demo-reset.test.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

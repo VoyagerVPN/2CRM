@@ -232,6 +232,7 @@ export type Database = {
         Args: { p_expected_version: number; p_id: string }
         Returns: undefined
       }
+      reset_demo_data: { Args: never; Returns: Json }
       save_object: {
         Args: {
           p_address: string
