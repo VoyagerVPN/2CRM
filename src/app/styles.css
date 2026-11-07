@@ -122,3 +122,5 @@ a, p, h1, h2, h3, td, .plain-text { overflow-wrap: anywhere; }
 
 /* На узком экране общая навигация сразу уходит в Drawer. */
 @media (max-width: 991px) { .sidebar { display: none; } }
+
+.demo-logins { display: flex; flex-direction: column; gap: 8px; }

@@ -1,8 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Alert, Button, Card, Form, Input, Space, Spin, Typography } from 'antd';
+import { Alert, Button, Card, Divider, Form, Input, Space, Spin, Typography } from 'antd';
 import { Navigate, useLocation } from 'react-router';
 import { supabase, unwrap, errorText, type Profile } from '../../shared/api/client';
+import { getDemoAccounts } from './demo-accounts';
+import { publicDemo } from './public-demo';
+const demoAccounts = getDemoAccounts(import.meta.env, publicDemo);
 type AuthState = { session: Session | null; profile: Profile | null; loading: boolean; error: string | null; reload: () => void; signOut: () => Promise<void> };
 const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -47,18 +50,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
  return children;
 }
 export function LoginPage() {
- const auth = useAuth(); const location = useLocation(); const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false); const busy = useRef(false);
+ const auth = useAuth(); const location = useLocation(); const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false); const busy = useRef(false); const [activeDemo, setActiveDemo] = useState<string | null>(null);
+ const signIn = async (values: { email: string; password: string }, demoId: string | null = null) => {
+  if (busy.current) return; busy.current = true; setPending(true); setActiveDemo(demoId); setError(null);
+  try { const result = await supabase.auth.signInWithPassword({ email: values.email.trim(), password: values.password }); if (result.error) throw result.error; } catch (failure) { setError(errorText(failure)); } finally { busy.current = false; setPending(false); setActiveDemo(null); }
+ };
  const from = (location.state as { from?: string } | null)?.from;
  if (auth.loading) return <div className="loading"><Spin /></div>;
  if (auth.profile) return <Navigate replace to={from?.startsWith('/') && !from.startsWith('//') && from !== '/login' ? from : auth.profile.role === 'manager' ? '/objects' : '/my-tasks'} />;
- return <main className="login"><Card className="login-card"><Typography.Title level={2}>Вход в 2CRM</Typography.Title><Typography.Paragraph type="secondary">Учётную запись выдаёт руководитель</Typography.Paragraph>
+ return <main className="login"><Card className="login-card"><Typography.Title level={2}>Вход в 2CRM</Typography.Title><Typography.Paragraph type="secondary">{demoAccounts.length ? 'Выберите участника для входа в демо' : 'Учётную запись выдаёт руководитель'}</Typography.Paragraph>
  {sessionStorage.getItem('2crm-had-session') && <Alert className="notice" type="info" title="Сессия завершилась. Войдите снова, чтобы продолжить" />}
  {(error || auth.error) && <Alert className="notice" type="error" title={error || auth.error} />}
- <Form layout="vertical" requiredMark={false} onFinish={async (values: { email: string; password: string }) => {
-  if (busy.current) return; busy.current = true; setPending(true); setError(null);
-  try { const result = await supabase.auth.signInWithPassword({ email: values.email.trim(), password: values.password }); if (result.error) throw result.error; } catch (failure) { setError(errorText(failure)); } finally { busy.current = false; setPending(false); }
- }}>
+ {demoAccounts.length > 0 && <><div className="demo-logins">{demoAccounts.map(account => <Button key={account.id} block disabled={pending} loading={pending && activeDemo === account.id} onClick={() => void signIn(account, account.id)}>{account.label}</Button>)}</div><Divider>Вход по почте</Divider></>}
+ <Form layout="vertical" requiredMark={false} onFinish={values => signIn(values)}>
  <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Введите email' }, { type: 'email', message: 'Проверьте адрес email' }]}><Input autoComplete="username" type="email" disabled={pending} /></Form.Item>
  <Form.Item label="Пароль" name="password" rules={[{ required: true, message: 'Введите пароль' }]}><Input.Password autoComplete="current-password" disabled={pending} /></Form.Item>
- <Button type="primary" htmlType="submit" loading={pending} block>Войти</Button></Form></Card></main>;
+ <Button type="primary" htmlType="submit" loading={pending && !activeDemo} disabled={pending} block>Войти</Button></Form></Card></main>;
 }
