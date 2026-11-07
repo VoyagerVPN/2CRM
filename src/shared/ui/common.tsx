@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, App, Button, Dropdown, Empty, Form, Modal, Result, Spin, Tag } from 'antd';
+import { Alert, App, Button, Dropdown, Empty, Form, Modal, Result, Space, Spin, Table, Tag } from 'antd';
 import { Link, useBlocker, useSearchParams } from 'react-router';
 import { assertCurrent, errorText, supabase, unwrap } from '../api/client';
+import { saveWithConflict, type VersionedValues } from './versioned-save';
 export const statusLabels: Record<string, string> = { new: 'Новая', in_progress: 'В работе', in_review: 'На проверке', rework: 'На доработке', accepted: 'Принята' };
 export function Status({ value }: { value: string }) { return <Tag className="status-tag" data-status={value}>{statusLabels[value] ?? value}</Tag>; }
 export const dateText = (value: string) => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
@@ -26,8 +27,15 @@ export function useListPage(path: string) {
  return { page, setPage: (value: number) => setSearch({ page: String(value) }) };
 }
 export const requiredText = { required: true, whitespace: true, message: 'Заполните поле' };
-export function SaveDialog<T extends object>({ title, initialValues, children, save, onSaved, onCancel, onFailure, okText = 'Сохранить' }: { okText?: string; title: string; initialValues: T; children: ReactNode; save: (values: T) => Promise<void>; onSaved: () => void; onCancel: () => void; onFailure?: () => void }) {
- const [form] = Form.useForm<T>(); const [dirty, setDirty] = useState(false); const [pending, setPending] = useState(false); const busy = useRef(false); const [error, setError] = useState<string>(); const { modal } = App.useApp();
+type ConflictField<T> = { name: keyof T; label: string; format?: (value: unknown) => string };
+export function SaveDialog<T extends object>({ title, initialValues, initialVersion, loadLatest, conflictFields = [], children, save, onSaved, onCancel, onFailure, okText = 'Сохранить' }: {
+ okText?: string; title: string; initialValues: T; initialVersion?: number; loadLatest?: () => Promise<VersionedValues<T> | null>;
+ conflictFields?: ConflictField<T>[]; children: ReactNode; save: (values: T, version?: number) => Promise<void>;
+ onSaved: () => void; onCancel: () => void; onFailure?: () => void;
+}) {
+ const [form] = Form.useForm<T>(); const [dirty, setDirty] = useState(false); const [pending, setPending] = useState(false); const busy = useRef(false);
+ const [error, setError] = useState<string>(); const [draft, setDraft] = useState(initialValues);
+ const [conflict, setConflict] = useState<VersionedValues<T>>(); const version = useRef(initialVersion); const overwrite = useRef(false); const { modal } = App.useApp();
  const blocker = useBlocker(dirty); const prompting = useRef(false);
  const confirmDiscard = () => modal.confirm({ title: 'Отменить изменения?', content: 'Введённые данные не будут сохранены', okText: 'Отменить изменения', cancelText: 'Продолжить редактирование' });
  useEffect(() => {
@@ -39,12 +47,36 @@ export function SaveDialog<T extends object>({ title, initialValues, children, s
   prompting.current = true; void confirmDiscard().then(confirmed => { prompting.current = false; if (confirmed) blocker.proceed(); else blocker.reset(); }, () => { prompting.current = false; blocker.reset(); });
  }, [blocker.state]);
  const cancel = async () => { if (busy.current) return; if (!dirty || await confirmDiscard()) onCancel(); };
- return <Modal open title={title} okText={okText} cancelText="Отмена" confirmLoading={pending} cancelButtonProps={{ disabled: pending }} closable={!pending} keyboard={!pending} onCancel={() => void cancel()} onOk={() => form.submit()}>
+ const differences = conflict ? conflictFields.filter(field => draft[field.name] !== conflict.values[field.name]).map(field => {
+  const format = (value: unknown) => field.format ? field.format(value) : String(value ?? '') || 'Не заполнено';
+  return { key: String(field.name), label: field.label, latest: format(conflict.values[field.name]), draft: format(draft[field.name]) };
+ }) : [];
+ return <Modal open title={title} okText={okText} cancelText="Отмена" confirmLoading={pending} okButtonProps={{ disabled: !!conflict }} cancelButtonProps={{ disabled: pending }} closable={!pending} keyboard={!pending} onCancel={() => void cancel()} onOk={() => form.submit()}>
  {error && <Alert className="notice" type="error" title={error} />}
- <Form<T> form={form} layout="vertical" initialValues={initialValues} disabled={pending} onValuesChange={() => setDirty(true)} onFinish={async values => {
-  if (busy.current) return; busy.current = true; setPending(true); setError(undefined);
-  try { await save(values); setDirty(false); onSaved(); }
-  catch (failure) { setError(errorText(failure)); onFailure?.(); }
+ {conflict && <Alert className="notice edit-conflict" type="warning" title="Запись изменилась" description={<>
+  <p>Ваши поля сохранены. Проверьте отличия перед сохранением.</p>
+  {differences.length ? <Table aria-label="Различия версий" size="small" tableLayout="fixed" pagination={false} dataSource={differences} columns={[
+   { title: 'Поле', dataIndex: 'label', width: '24%' },
+   { title: 'Сейчас в базе', dataIndex: 'latest', render: value => <span className="plain-text" style={{ whiteSpace: 'pre-wrap' }}>{value}</span> },
+   { title: 'Ваш вариант', dataIndex: 'draft', render: value => <span className="plain-text" style={{ whiteSpace: 'pre-wrap' }}>{value}</span> },
+  ]} /> : <p>Поля формы совпадают с актуальными данными.</p>}
+  <Space wrap style={{ marginTop: 12 }}>
+   <Button disabled={pending} onClick={() => {
+    version.current = conflict.version; overwrite.current = false; form.setFieldsValue(conflict.values as Parameters<typeof form.setFieldsValue>[0]);
+    setDraft(conflict.values); setDirty(false); setError(undefined); setConflict(undefined);
+   }}>Загрузить актуальные данные</Button>
+   <Button type="primary" loading={pending} onClick={() => { overwrite.current = true; form.submit(); }}>Сохранить мой вариант</Button>
+  </Space>
+ </>} />}
+ <Form<T> form={form} layout="vertical" initialValues={initialValues} disabled={pending} onValuesChange={(_, values) => { setDirty(true); setDraft(values); }} onFinish={async values => {
+  if (busy.current || (conflict && !overwrite.current)) return;
+  const expectedVersion = conflict && overwrite.current ? conflict.version : version.current;
+  overwrite.current = false; busy.current = true; setPending(true); setError(undefined);
+  try {
+   const result = await saveWithConflict({ values, version: expectedVersion, save, loadLatest });
+   if (result.kind === 'conflict') { setConflict(result.latest); onFailure?.(); }
+   else { setConflict(undefined); setDirty(false); onSaved(); }
+  } catch (failure) { setError(errorText(failure)); onFailure?.(); }
   finally { busy.current = false; setPending(false); }
  }}>{children}</Form></Modal>;
 }

@@ -153,3 +153,28 @@ test('объект и история доступны только текуще�
   ok(await admin.from('objects').delete().eq('id',parent.id));
  }
 });
+
+test('возврат отклоняет любой пробельный комментарий, не меняя задачу и историю', async () => {
+ let task = ok(await clients.manager.rpc('save_task', { p_title: 'Проверка комментария', p_description: '', p_object_id: object.id, p_assignee_id: users.executor1.id }));
+ for (const status of ['in_progress', 'in_review']) task = ok(await clients.executor1.rpc('change_task_status', { p_task_id: task.id, p_expected_version: task.version, p_status: status }));
+ const blankComments = [null, '', '   ', '\t', '\n', '\r\n', '\f\v', '\u00a0', '\u1680', '\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a', '\u2028\u2029\u202f\u205f\u3000\ufeff', ' \t\n\u00a0 '];
+ for (const comment of blankComments) {
+  const result = await clients.manager.rpc('change_task_status', { p_task_id: task.id, p_expected_version: task.version, p_status: 'rework', p_comment: comment });
+  assert.equal(result.error?.code, 'PT422', 'Отклонить ' + JSON.stringify(comment));
+ }
+ const unchanged = ok(await clients.manager.from('tasks').select('status,version').eq('id', task.id).single());
+ assert.deepEqual(unchanged, { status: 'in_review', version: task.version });
+ assert.equal(ok(await clients.manager.from('task_status_history').select('id').eq('task_id', task.id)).length, 3);
+ const comment = 'Проверить крепления.\nДобавить опору.';
+ const returned = ok(await clients.manager.rpc('change_task_status', { p_task_id: task.id, p_expected_version: task.version, p_status: 'rework', p_comment: comment }));
+ assert.equal(returned.status, 'rework');
+ const history = ok(await clients.executor1.from('task_status_history').select('comment').eq('task_id', task.id).eq('to_status', 'rework').single());
+ assert.equal(history.comment, comment);
+});
+
+test('ограничение истории отклоняет возврат без текста даже в доверенной тестовой фикстуре', async () => {
+ for (const comment of [null, '', '\t', '\n', '\u00a0', '\ufeff']) {
+  const result = await admin.from('task_status_history').insert({ task_id: ownTask.id, from_status: 'in_review', to_status: 'rework', actor_id: users.manager.id, actor_name: 'Постановщик проверки', comment });
+  assert.equal(result.error?.code, '23514', 'Отклонить запись истории ' + JSON.stringify(comment));
+ }
+});

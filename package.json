@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build --configLoader native",
     "preview": "vite preview --configLoader native",
     "check:supabase": "node scripts/check-supabase.mjs",
-    "test": "node --test --test-isolation=none tests/unit/request.test.mjs tests/unit/task-presentation.test.mjs",
+    "test": "node --test --test-isolation=none tests/unit/request.test.mjs tests/unit/task-presentation.test.mjs tests/unit/versioned-save.test.mjs",
     "test:integration": "node --test --test-isolation=none tests/integration/crm.test.mjs",
     "provision": "node scripts/provision.mjs",
     "seed:demo": "node scripts/seed-demo.mjs"
