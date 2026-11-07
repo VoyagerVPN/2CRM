@@ -1,0 +1,14 @@
+.cache/
+node_modules/
+dist/
+.env
+.env.*
+APIkey.txt
+AGENTS.md
+design-lab/
+docs/START.md
+docs/REQUIREMENTS.md
+docs/IMPLEMENTATION.md
+docs/UX-DECISIONS.md
+.socraticode*
+supabase/.temp/

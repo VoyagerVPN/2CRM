@@ -10,3 +10,10 @@ AGENTS.md
 docs/START.md
 docs/REQUIREMENTS.md
 docs/IMPLEMENTATION.md
+docs/UX-DECISIONS.md
+
+APIkey.txt
+
+.vercel/
+
+supabase/.temp/
